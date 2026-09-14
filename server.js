@@ -860,18 +860,19 @@ app.get('/api/admin/orders', auth, admin, async (req, res) => {
 
 app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
   try {
-    const allowed = [
-      'queued',
-      'processing',
-      'completed',
-      'cancelled'
-    ];
+    const status = String(req.body?.status || '').trim();
 
-    const status = String(req.body.status || '');
-
-    if (!allowed.includes(status)) {
+    if (!['queued', 'processing', 'completed', 'cancelled'].includes(status)) {
       return res.status(400).json({
         error: 'Status inválido.'
+      });
+    }
+
+    const orderId = Number(req.params.id);
+
+    if (!Number.isInteger(orderId)) {
+      return res.status(400).json({
+        error: 'Pedido inválido.'
       });
     }
 
@@ -880,23 +881,20 @@ app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
       UPDATE orders
       SET
         status = $1,
-        started_at =
-          CASE
-            WHEN $1 = 'processing'
-              AND started_at IS NULL
-            THEN NOW()
-            ELSE started_at
-          END,
-        completed_at =
-          CASE
-            WHEN $1 = 'completed'
-            THEN NOW()
-            ELSE completed_at
-          END
+        started_at = CASE
+          WHEN $1 = 'processing' AND started_at IS NULL
+          THEN NOW()
+          ELSE started_at
+        END,
+        completed_at = CASE
+          WHEN $1 = 'completed'
+          THEN NOW()
+          ELSE completed_at
+        END
       WHERE id = $2
       RETURNING *
       `,
-      [status, req.params.id]
+      [status, orderId]
     );
 
     if (!result.rows[0]) {
@@ -906,8 +904,9 @@ app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
     }
 
     res.json(result.rows[0]);
+
   } catch (error) {
-    console.error(error);
+    console.error('Erro ao atualizar pedido:', error);
 
     res.status(500).json({
       error: 'Erro ao atualizar pedido.'
