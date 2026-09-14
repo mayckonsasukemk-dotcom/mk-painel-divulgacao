@@ -190,7 +190,8 @@ async function ensureAdmin() {
       [hash, phone]
     );
   }
-}app.get('/api/health', async (req, res) => {
+}
+app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ ok: true });
@@ -827,6 +828,92 @@ app.post(
     }
   }
 );
+
+app.get('/api/admin/orders', auth, admin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        o.id,
+        o.group_link,
+        o.credits,
+        o.status,
+        o.created_at,
+        u.phone,
+        p.name AS package_name,
+        p.price_cents
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      JOIN packages p ON p.id = o.package_id
+      ORDER BY o.id DESC
+      LIMIT 100
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar pedidos.'
+    });
+  }
+});
+
+app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
+  try {
+    const allowed = [
+      'queued',
+      'processing',
+      'completed',
+      'cancelled'
+    ];
+
+    const status = String(req.body.status || '');
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        error: 'Status inválido.'
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE orders
+      SET
+        status = $1,
+        started_at =
+          CASE
+            WHEN $1 = 'processing'
+              AND started_at IS NULL
+            THEN NOW()
+            ELSE started_at
+          END,
+        completed_at =
+          CASE
+            WHEN $1 = 'completed'
+            THEN NOW()
+            ELSE completed_at
+          END
+      WHERE id = $2
+      RETURNING *
+      `,
+      [status, req.params.id]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        error: 'Pedido não encontrado.'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao atualizar pedido.'
+    });
+  }
+});
 
 app.get('*', (req, res) => {
   res.sendFile(
