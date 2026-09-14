@@ -388,7 +388,7 @@ app.get('*', (req, res) => {
 
 const PORT = Number(process.env.PORT || 3000);
 
-async function start() {
+async function {
   try {
     await pool.query('SELECT 1');
     await initDb();
