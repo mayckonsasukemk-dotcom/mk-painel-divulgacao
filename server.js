@@ -375,14 +375,15 @@ app.get('/api/orders', auth, async (req, res) => {
   }
 });
 
-404).json({
-        error: 'Pedido não encontrado.'
-      });
-    }
+if (!result.rows[0]) {
+  return res.status(404).json({
+    error: 'Pedido não encontrado.'
+  });
+}
 
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error(error);
+res.json(result.rows[0]);
+} catch (error) {
+
 
     res.status(500).json({app.get('/api/admin/users', auth, admin, async (req, res) => {
   try {
