@@ -374,7 +374,16 @@ app.get('/api/orders', auth, async (req, res) => {
   }
 });
 
-app.get('/api/admin/users', auth, admin, async (req, res) => {
+404).json({
+        error: 'Pedido não encontrado.'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({app.get('/api/admin/users', auth, admin, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, phone, role, balance_cents, active, created_at
@@ -417,21 +426,171 @@ app.patch('/api/orders/:id/status', auth, admin, async (req, res) => {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({
-        error: 'Pedido não encontrado.'
-      });
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
+      return res.status(
       error: 'Erro ao atualizar pedido.'
     });
   }
 });
 
+app.post('/api/payments/webhook', async (req, res) => {
+  try {
+    const paymentId =
+      req.body?.data?.id ||
+      req.body?.id;
+
+    if (!paymentId) {
+      return res.status(200).json({ received: true });
+    }
+
+    const response = await fetch(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          'Authorization':
+            `Bearer ${process.env.MP_ACCESS_TOKEN}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        'Erro ao consultar pagamento:',
+        await response.text()
+      );
+
+      return res.status(200).json({
+        received: true
+      });
+    }
+
+    const payment = await response.json();
+
+    if (payment.status !== 'approved') {
+      return res.status(200).json({
+        received: true
+      });
+    }
+
+    const userId =
+      payment.external_reference;
+
+    if (!userId) {
+      console.error(
+        'Pagamento sem external_reference:',
+        paymentId
+      );
+
+      return res.status(200).json({
+        received: true
+      });
+    }
+
+    const amountCents =
+      Math.round(Number(payment.transaction_amount) * 100);
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query(
+        `SELECT id, status
+         FROM payments
+         WHERE provider_payment_id = $1
+         FOR UPDATE`,
+        [String(paymentId)]
+      );
+
+      if (
+        existing.rows[0] &&
+        existing.rows[0].status === 'approved'
+      ) {
+        await client.query('COMMIT');
+
+        return res.status(200).json({
+          received: true,
+          already_processed: true
+        });
+      }
+
+      if (existing.rows[0]) {
+        await client.query(
+          `UPDATE payments
+           SET status = 'approved',
+               approved_at = NOW()
+           WHERE provider_payment_id = $1`,
+          [String(paymentId)]
+        );
+      } else {
+        const externalReference =
+          String(userId);
+
+        await client.query(
+          `INSERT INTO payments
+           (
+             user_id,
+             amount_cents,
+             status,
+             provider,
+             provider_payment_id,
+             external_reference,
+             approved_at
+           )
+           VALUES ($1, $2, 'approved', 'mercadopago', $3, $4, NOW())
+           ON CONFLICT (provider_payment_id)
+           DO NOTHING`,
+          [
+            Number(userId),
+            amountCents,
+            String(paymentId),
+            externalReference
+          ]
+        );
+      }
+
+      const credit = await client.query(
+        `UPDATE users
+         SET balance_cents = balance_cents + $1
+         WHERE id = $2
+         RETURNING id`,
+        [amountCents, Number(userId)]
+      );
+
+      if (!credit.rows[0]) {
+        throw new Error(
+          'Usuário do pagamento não encontrado.'
+        );
+      }
+
+      await client.query('COMMIT');
+
+      console.log(
+        `PIX aprovado: pagamento ${paymentId}, usuário ${userId}, +R$ ${(amountCents / 100).toFixed(2)}`
+      );
+
+      return res.status(200).json({
+        received: true
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error(
+      'Erro no webhook Mercado Pago:',
+      error
+    );
+
+    return res.status(200).json({
+      received: true
+    });
+  }
+});
+    
 app.get('*', (req, res) => {
   res.sendFile(
     process.cwd() + '/public/app.html'
