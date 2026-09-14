@@ -879,8 +879,8 @@ app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
     const result = await pool.query(
       `
       UPDATE orders
-      SET
-        status = $1,
+SET
+  status = $1::varchar,
         started_at = CASE
           WHEN $1 = 'processing' AND started_at IS NULL
           THEN NOW()
@@ -891,7 +891,7 @@ app.patch('/api/admin/orders/:id/status', auth, admin, async (req, res) => {
           THEN NOW()
           ELSE completed_at
         END
-      WHERE id = $2
+      WHERE id = $2::integer
       RETURNING *
       `,
       [status, orderId]
