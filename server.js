@@ -87,10 +87,8 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS packages (
       id BIGSERIAL PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
-      price_cents BIGINT NOT NULL
-        CHECK(price_cents > 0),
-      credits INTEGER NOT NULL
-        CHECK(credits > 0),
+      price_cents BIGINT NOT NULL CHECK(price_cents > 0),
+      credits INTEGER NOT NULL CHECK(credits > 0),
       active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
@@ -128,14 +126,21 @@ async function initDb() {
       details JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-
-    INSERT INTO packages(name, price_cents, credits)
-    VALUES
-      ('30 saldo - R$ 30', 3000, 1),
-      ('60 saldo - R$ 60', 6000, 2),
-      ('100 saldo - R$ 100', 10000, 4)
-    ON CONFLICT DO NOTHING;
   `);
+
+  const packageCheck = await pool.query(
+    'SELECT COUNT(*)::int AS total FROM packages'
+  );
+
+  if (packageCheck.rows[0].total === 0) {
+    await pool.query(`
+      INSERT INTO packages(name, price_cents, credits)
+      VALUES
+        ('30 saldo - R$ 30', 3000, 1),
+        ('60 saldo - R$ 60', 6000, 2),
+        ('100 saldo - R$ 100', 10000, 4)
+    `);
+  }
 
   console.log('Banco inicializado com sucesso.');
 }
@@ -179,6 +184,8 @@ async function ensureAdmin() {
   }
 }
 
+/* HEALTH */
+
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -188,6 +195,8 @@ app.get('/api/health', async (req, res) => {
     res.status(503).json({ ok: false });
   }
 });
+
+/* LOGIN / CADASTRO */
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -258,6 +267,8 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+/* USUÁRIO LOGADO */
+
 app.get('/api/me', auth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -283,57 +294,7 @@ app.get('/api/me', auth, async (req, res) => {
   }
 });
 
-app.post('/api/payments/pix', auth, async (req, res) => {
-  try {
-    const { amount } = req.body;
-
-    if (!amount || Number(amount) < 30) {
-      return res.status(400).json({
-        error: 'O valor mínimo é R$ 30,00'
-      });
-    }
-
-    const response = await fetch(
-      'https://api.mercadopago.com/v1/payments',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
-          'X-Idempotency-Key': crypto.randomUUID()
-        },
-        body: JSON.stringify({
-  transaction_amount: Number(amount),
-  description: 'Crédito MK Painel Divulgação',
-  payment_method_id: 'pix',
-  external_reference: String(req.user.id),
-  payer: {
-    email: `${req.user.phone}@mkpainel.com`
-  }
-})
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('Mercado Pago:', data);
-      return res.status(400).json({
-        error: 'Não foi possível criar o Pix'
-      });
-    }
-
-    res.json({
-      id: data.id,
-      status: data.status,
-      qr_code: data.point_of_interaction?.transaction_data?.qr_code,
-      qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64
-    });
-  } catch (error) {
-    console.error('Erro Pix:', error);
-    res.status(500).json({ error: 'Erro interno ao gerar Pix' });
-  }
-});
+/* PACOTES */
 
 app.get('/api/packages', auth, async (req, res) => {
   try {
@@ -354,94 +315,174 @@ app.get('/api/packages', auth, async (req, res) => {
   }
 });
 
-app.get('/api/orders', auth, async (req, res) => {
+/* GERAR PIX */
+
+app.post('/api/payments/pix', auth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT o.*, p.name AS package_name
-       FROM orders o
-       JOIN packages p ON p.id = o.package_id
-       WHERE o.user_id = $1
-       ORDER BY o.id DESC`,
-      [req.user.id]
-    );
+    const amount = Number(req.body.amount);
 
-    res.json(result.rows);
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      error: 'Erro ao carregar pedidos.'
-    });
-  }
-});
-
-if (!result.rows[0]) {
-  return res.status(404).json({
-    error: 'Pedido não encontrado.'
-  });
-}
-
-res.json(result.rows[0]);
-} catch (error) {
-
-
-    res.status(500).json({app.get('/api/admin/users', auth, admin, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT id, phone, role, balance_cents, active, created_at
-       FROM users
-       ORDER BY id DESC
-       LIMIT 500`
-    );
-
-    res.json(result.rows);
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      error: 'Erro ao carregar usuários.'
-    });
-  }
-});
-
-app.patch('/api/orders/:id/status', auth, admin, async (req, res) => {
-  try {
-    const allowed = [
-      'queued',
-      'processing',
-      'completed',
-      'cancelled'
-    ];
-
-    if (!allowed.includes(req.body.status)) {
+    if (!Number.isFinite(amount) || amount < 30) {
       return res.status(400).json({
-        error: 'Status inválido.'
+        error: 'O valor mínimo é R$ 30,00'
       });
     }
 
-    const result = await pool.query(
-      `UPDATE orders
-       SET status = $1
-       WHERE id = $2
-       RETURNING *`,
-      [req.body.status, req.params.id]
+    const amountCents = Math.round(amount * 100);
+
+    const externalReference =
+      `MK-${req.user.id}-${crypto.randomUUID()}`;
+
+    const response = await fetch(
+      'https://api.mercadopago.com/v1/payments',
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization':
+            `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+          'X-Idempotency-Key':
+            crypto.randomUUID()
+        },
+
+        body: JSON.stringify({
+          transaction_amount: amount,
+          description: 'Crédito MK Painel Divulgação',
+          payment_method_id: 'pix',
+          external_reference: externalReference,
+
+          payer: {
+            email:
+              req.body.email ||
+              `${req.user.phone}@mkpainel.com`
+          }
+        })
+      }
     );
 
-    if (!result.rows[0]) {
-      return res.status(
-      error: 'Erro ao atualizar pedido.'
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Mercado Pago:', data);
+
+      return res.status(400).json({
+        error: 'Não foi possível criar o Pix'
+      });
+    }
+
+    await pool.query(
+      `INSERT INTO payments
+       (
+         user_id,
+         amount_cents,
+         status,
+         provider,
+         provider_payment_id,
+         external_reference,
+         qr_code,
+         qr_code_base64
+       )
+       VALUES
+       ($1, $2, $3, 'mercadopago', $4, $5, $6, $7)`,
+      [
+        req.user.id,
+        amountCents,
+        data.status || 'pending',
+        String(data.id),
+        externalReference,
+        data.point_of_interaction
+          ?.transaction_data?.qr_code || null,
+        data.point_of_interaction
+          ?.transaction_data?.qr_code_base64 || null
+      ]
+    );
+
+    res.json({
+      id: data.id,
+      status: data.status,
+      qr_code:
+        data.point_of_interaction
+          ?.transaction_data?.qr_code,
+      qr_code_base64:
+        data.point_of_interaction
+          ?.transaction_data?.qr_code_base64
+    });
+
+  } catch (error) {
+    console.error('Erro Pix:', error);
+
+    res.status(500).json({
+      error: 'Erro interno ao gerar Pix'
     });
   }
 });
 
+/* WEBHOOK MERCADO PAGO */
+
 app.post('/api/payments/webhook', async (req, res) => {
   try {
-    const paymentId =
+    const secret = process.env.MP_WEBHOOK_SECRET;
+
+    const signature =
+      req.headers['x-signature'];
+
+    const requestId =
+      req.headers['x-request-id'];
+
+    const dataId =
+      req.query['data.id'] ||
       req.body?.data?.id ||
       req.body?.id;
 
+    if (secret && signature && requestId && dataId) {
+      const parts = String(signature)
+        .split(',')
+        .map(item => item.split('='));
+
+      const ts =
+        parts.find(item => item[0] === 'ts')?.[1];
+
+      const v1 =
+        parts.find(item => item[0] === 'v1')?.[1];
+
+      if (!ts || !v1) {
+        return res.status(401).json({
+          error: 'Assinatura inválida'
+        });
+      }
+
+      const template =
+        `id:${String(dataId).toLowerCase()};request-id:${requestId};ts:${ts};`;
+
+      const expected =
+        crypto
+          .createHmac('sha256', secret)
+          .update(template)
+          .digest('hex');
+
+      const valid =
+        expected.length === v1.length &&
+        crypto.timingSafeEqual(
+          Buffer.from(expected),
+          Buffer.from(v1)
+        );
+
+      if (!valid) {
+        return res.status(401).json({
+          error: 'Assinatura inválida'
+        });
+      }
+    }
+
+    const paymentId =
+      req.body?.data?.id ||
+      req.body?.id ||
+      dataId;
+
     if (!paymentId) {
-      return res.status(200).json({ received: true });
+      return res.status(200).json({
+        received: true
+      });
     }
 
     const response = await fetch(
@@ -473,10 +514,10 @@ app.post('/api/payments/webhook', async (req, res) => {
       });
     }
 
-    const userId =
-      payment.external_reference;
+    const externalReference =
+      String(payment.external_reference || '');
 
-    if (!userId) {
+    if (!externalReference) {
       console.error(
         'Pagamento sem external_reference:',
         paymentId
@@ -487,26 +528,40 @@ app.post('/api/payments/webhook', async (req, res) => {
       });
     }
 
-    const amountCents =
-      Math.round(Number(payment.transaction_amount) * 100);
-
     const client = await pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      const existing = await client.query(
-        `SELECT id, status
+      const paymentResult = await client.query(
+        `SELECT *
          FROM payments
          WHERE provider_payment_id = $1
+            OR external_reference = $2
          FOR UPDATE`,
-        [String(paymentId)]
+        [
+          String(paymentId),
+          externalReference
+        ]
       );
 
-      if (
-        existing.rows[0] &&
-        existing.rows[0].status === 'approved'
-      ) {
+      const savedPayment =
+        paymentResult.rows[0];
+
+      if (!savedPayment) {
+        await client.query('ROLLBACK');
+
+        console.error(
+          'Pagamento não encontrado no banco:',
+          paymentId
+        );
+
+        return res.status(200).json({
+          received: true
+        });
+      }
+
+      if (savedPayment.status === 'approved') {
         await client.query('COMMIT');
 
         return res.status(200).json({
@@ -515,48 +570,35 @@ app.post('/api/payments/webhook', async (req, res) => {
         });
       }
 
-      if (existing.rows[0]) {
-        await client.query(
-          `UPDATE payments
-           SET status = 'approved',
-               approved_at = NOW()
-           WHERE provider_payment_id = $1`,
-          [String(paymentId)]
+      const amountCents =
+        Math.round(
+          Number(payment.transaction_amount) * 100
         );
-      } else {
-        const externalReference =
-          String(userId);
 
+      await client.query(
+        `UPDATE payments
+         SET status = 'approved',
+             provider_payment_id = $1,
+             approved_at = NOW()
+         WHERE id = $2`,
+        [
+          String(paymentId),
+          savedPayment.id
+        ]
+      );
+
+      const credit =
         await client.query(
-          `INSERT INTO payments
-           (
-             user_id,
-             amount_cents,
-             status,
-             provider,
-             provider_payment_id,
-             external_reference,
-             approved_at
-           )
-           VALUES ($1, $2, 'approved', 'mercadopago', $3, $4, NOW())
-           ON CONFLICT (provider_payment_id)
-           DO NOTHING`,
+          `UPDATE users
+           SET balance_cents =
+               balance_cents + $1
+           WHERE id = $2
+           RETURNING id, balance_cents`,
           [
-            Number(userId),
             amountCents,
-            String(paymentId),
-            externalReference
+            savedPayment.user_id
           ]
         );
-      }
-
-      const credit = await client.query(
-        `UPDATE users
-         SET balance_cents = balance_cents + $1
-         WHERE id = $2
-         RETURNING id`,
-        [amountCents, Number(userId)]
-      );
 
       if (!credit.rows[0]) {
         throw new Error(
@@ -564,10 +606,24 @@ app.post('/api/payments/webhook', async (req, res) => {
         );
       }
 
+      await client.query(
+        `INSERT INTO audit_logs
+         (user_id, action, details)
+         VALUES ($1, $2, $3)`,
+        [
+          savedPayment.user_id,
+          'payment_approved',
+          JSON.stringify({
+            payment_id: String(paymentId),
+            amount_cents: amountCents
+          })
+        ]
+      );
+
       await client.query('COMMIT');
 
       console.log(
-        `PIX aprovado: pagamento ${paymentId}, usuário ${userId}, +R$ ${(amountCents / 100).toFixed(2)}`
+        `PIX aprovado: ${paymentId} | usuário ${savedPayment.user_id} | +R$ ${(amountCents / 100).toFixed(2)}`
       );
 
       return res.status(200).json({
@@ -577,6 +633,7 @@ app.post('/api/payments/webhook', async (req, res) => {
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
+
     } finally {
       client.release();
     }
@@ -592,28 +649,59 @@ app.post('/api/payments/webhook', async (req, res) => {
     });
   }
 });
-    
-app.get('*', (req, res) => {
-  res.sendFile(
-    process.cwd() + '/public/app.html'
-  );
+
+/* PEDIDOS */
+
+app.get('/api/orders', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.*, p.name AS package_name
+       FROM orders o
+       JOIN packages p ON p.id = o.package_id
+       WHERE o.user_id = $1
+       ORDER BY o.id DESC`,
+      [req.user.id]
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar pedidos.'
+    });
+  }
 });
 
-const PORT = Number(process.env.PORT || 3000);
+app.post('/api/orders', auth, async (req, res) => {
+  const client = await pool.connect();
 
-async function start() {
   try {
-    await pool.query('SELECT 1');
-    await initDb();
-    await ensureAdmin();
+    const packageId =
+      Number(req.body.package_id);
 
-    app.listen(PORT, () => {
-      console.log(`MK Painel rodando na porta ${PORT}`);
-    });
-  } catch (error) {
-    console.error('Erro ao iniciar:', error);
-    process.exit(1);
-  }
-}
+    const groupLink =
+      String(req.body.group_link || '').trim();
 
-start();
+    if (!Number.isInteger(packageId)) {
+      return res.status(400).json({
+        error: 'Pacote inválido.'
+      });
+    }
+
+    if (
+      !groupLink.startsWith(
+        'https://chat.whatsapp.com/'
+      )
+    ) {
+      return res.status(400).json({
+        error: 'Link de grupo inválido.'
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const packageResult =
+      await client.query(
+        `SELECT *
