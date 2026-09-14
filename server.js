@@ -52,7 +52,7 @@ function auth(req, res, next) {
     req.user = jwt.verify(token, JWT_SECRET);
 
     next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({
       error: 'Sessão inválida'
     });
@@ -68,10 +68,6 @@ function admin(req, res, next) {
 
   next();
 }
-
-/* =========================
-   CRIAÇÃO AUTOMÁTICA DO BANCO
-   ========================= */
 
 async function initDb() {
   await pool.query(`
@@ -121,9 +117,7 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       started_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ,
-      CHECK (
-        group_link LIKE 'https://chat.whatsapp.com/%'
-      )
+      CHECK (group_link LIKE 'https://chat.whatsapp.com/%')
     );
 
     CREATE TABLE IF NOT EXISTS audit_logs (
@@ -134,11 +128,7 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
-    INSERT INTO packages (
-      name,
-      price_cents,
-      credits
-    )
+    INSERT INTO packages(name, price_cents, credits)
     VALUES
       ('30 saldo - R$ 30', 3000, 1),
       ('60 saldo - R$ 60', 6000, 2),
@@ -149,18 +139,12 @@ async function initDb() {
   console.log('Banco inicializado com sucesso.');
 }
 
-/* =========================
-   ADMIN
-   ========================= */
-
 async function ensureAdmin() {
   const phone = normalizePhone(process.env.ADMIN_PHONE);
   const password = String(process.env.ADMIN_PASSWORD || '');
 
   if (!phone || !password) {
-    console.log(
-      'ADMIN_PHONE ou ADMIN_PASSWORD não configurado.'
-    );
+    console.log('ADMIN_PHONE ou ADMIN_PASSWORD não configurado.');
     return;
   }
 
@@ -194,29 +178,15 @@ async function ensureAdmin() {
   }
 }
 
-/* =========================
-   HEALTH
-   ========================= */
-
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-
-    res.json({
-      ok: true
-    });
+    res.json({ ok: true });
   } catch (error) {
     console.error(error);
-
-    res.status(503).json({
-      ok: false
-    });
+    res.status(503).json({ ok: false });
   }
 });
-
-/* =========================
-   LOGIN / CADASTRO
-   ========================= */
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -225,8 +195,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!phone || password.length < 6) {
       return res.status(400).json({
-        error:
-          'Informe telefone e senha com pelo menos 6 caracteres.'
+        error: 'Informe telefone e senha com pelo menos 6 caracteres.'
       });
     }
 
@@ -249,8 +218,6 @@ app.post('/api/auth/login', async (req, res) => {
       );
 
       user = result.rows[0];
-
-      console.log('Novo usuário criado:', phone);
     } else {
       if (!user.active) {
         return res.status(403).json({
@@ -290,19 +257,10 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-/* =========================
-   USUÁRIO
-   ========================= */
-
 app.get('/api/me', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT
-         id,
-         phone,
-         role,
-         balance_cents,
-         active
+      `SELECT id, phone, role, balance_cents, active
        FROM users
        WHERE id = $1`,
       [req.user.id]
@@ -315,3 +273,125 @@ app.get('/api/me', auth, async (req, res) => {
     }
 
     res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro interno do servidor.'
+    });
+  }
+});
+
+app.get('/api/packages', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, price_cents, credits
+       FROM packages
+       WHERE active = true
+       ORDER BY price_cents`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar pacotes.'
+    });
+  }
+});
+
+app.get('/api/orders', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.*, p.name AS package_name
+       FROM orders o
+       JOIN packages p ON p.id = o.package_id
+       WHERE o.user_id = $1
+       ORDER BY o.id DESC`,
+      [req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar pedidos.'
+    });
+  }
+});
+
+app.get('/api/admin/users', auth, admin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, phone, role, balance_cents, active, created_at
+       FROM users
+       ORDER BY id DESC
+       LIMIT 500`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar usuários.'
+    });
+  }
+});
+
+app.patch('/api/orders/:id/status', auth, admin, async (req, res) => {
+  try {
+    const allowed = [
+      'queued',
+      'processing',
+      'completed',
+      'cancelled'
+    ];
+
+    if (!allowed.includes(req.body.status)) {
+      return res.status(400).json({
+        error: 'Status inválido.'
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE orders
+       SET status = $1
+       WHERE id = $2
+       RETURNING *`,
+      [req.body.status, req.params.id]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        error: 'Pedido não encontrado.'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: 'Erro ao atualizar pedido.'
+    });
+  }
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(
+    process.cwd() + '/public/app.html'
+  );
+});
+
+const PORT = Number(process.env.PORT || 3000);
+
+async function start() {
+  try {
+    await pool.query('SELECT 1');
+    await initDb();
+    await ensureAdmin();
+
+   
