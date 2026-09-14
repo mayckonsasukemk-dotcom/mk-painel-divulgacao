@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MK Painel Divulgação</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&display=swap');
+*{box-sizing:border-box}
+body{margin:0;background:#050505;color:#fff;font-family:Arial,sans-serif;min-height:100vh}
+:root{--red:#e00000;--red2:#ff2020;--dark:#0b0b0b;--card:#151515}
+.app{width:min(720px,100%);margin:auto;padding:20px 16px 50px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+.brand{font-family:Orbitron;font-size:23px;font-weight:700;color:#ff2222;text-shadow:0 0 14px #f00}
+.user{font-size:12px;color:#aaa;text-align:right}.user b{color:#fff}
+.logout{margin-top:5px;background:#240909;color:#ff5a5a;border:1px solid #641515;border-radius:8px;padding:6px 10px;font-size:11px}
+.hero{background:linear-gradient(145deg,#190606,#090909);border:1px solid #491010;border-radius:17px;padding:21px;box-shadow:0 0 22px #f0000022}
+.hero h1{font-family:Orbitron;color:#ff2525;font-size:27px;margin:0 0 7px;text-shadow:0 0 12px #f00}
+.hero p{color:#aaa;margin:0;font-size:13px;line-height:1.5}
+.balance{display:flex;justify-content:space-between;align-items:center;margin:15px 0;background:#111;border:1px solid #321010;border-radius:13px;padding:15px}
+.balance span{color:#999;font-size:12px}.balance strong{font-size:22px;color:#fff}
+.add{background:#df0000;color:#fff;padding:11px 14px;border-radius:9px;font-weight:bold}
+.section{margin-top:20px}.title{font-family:Orbitron;color:#ff2222;font-size:17px;margin:0 0 11px}
+.packages{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.package{background:#121212;border:1px solid #351010;border-radius:12px;padding:14px 9px;text-align:center;cursor:pointer}
+.package.selected{border-color:#ff1b1b;box-shadow:0 0 16px #f0000044;background:#1c0808}
+.package b{display:block;font-size:14px}.package .qty{font-size:11px;color:#aaa;margin:6px 0}.package .price{color:#ff2626;font-weight:bold;font-size:18px}
+.form{background:#111;border:1px solid #351010;border-radius:14px;padding:17px}
+label{display:block;font-size:12px;color:#aaa;margin:10px 0 6px}
+input{width:100%;padding:13px;background:#070707;border:1px solid #3c1616;border-radius:9px;color:#fff;outline:none}
+input:focus{border-color:#f22}
+.mainbtn{width:100%;padding:14px;border:0;border-radius:10px;background:linear-gradient(90deg,#b90000,#ff1616);color:#fff;font-family:Orbitron;font-weight:700;margin-top:14px;box-shadow:0 0 18px #f0000030}
+.queue{background:#0d0d0d;border:1px solid #2d1010;border-radius:12px;overflow:hidden}
+.queue div{padding:12px 14px;border-bottom:1px solid #221010;font-size:12px}.queue div:last-child{border-bottom:0}
+.status{float:right;color:#ff4a4a}
+.support{position:fixed;right:18px;bottom:18px;width:58px;height:58px;border-radius:50%;background:#e00000;display:grid;place-items:center;color:#fff;font-size:25px;box-shadow:0 0 24px #f0000070;text-decoration:none}
+.modal{display:none;position:fixed;inset:0;background:#000d;align-items:center;justify-content:center;padding:18px;z-index:5}
+.modal.show{display:flex}.box{width:min(420px,100%);background:#100606;border:1px solid #ef1717;border-radius:16px;padding:20px;box-shadow:0 0 30px #f0000055}
+.box h2{font-family:Orbitron;color:#ff2424;margin-top:0}
+#qr{width:max-content;margin:15px auto;background:#fff;padding:12px;border-radius:9px}
+.pix{font-size:10px;word-break:break-all;background:#060606;border:1px solid #311010;padding:11px;border-radius:8px;color:#ddd}
+.close{width:100%;padding:12px;margin-top:9px;border:0;border-radius:9px;background:#271010;color:#fff}
+.copy{width:100%;padding:12px;margin-top:9px;border:0;border-radius:9px;background:#e00000;color:#fff}
+.note{font-size:10px;color:#777;line-height:1.4;margin-top:10px}
+@media(max-width:500px){.app{padding:17px 12px 80px}.packages{grid-template-columns:1fr 1fr}.brand{font-size:18px}.hero h1{font-size:23px}}
+</style>
+</head>
+<body>
+<div class="app">
+ <header class="top">
+  <div class="brand">MK PAINEL DIVULGAÇÃO</div>
+  <div class="user">Usuário<br><b>cliente</b><br><button class="logout">SAIR</button></div>
+ </header>
+
+ <div class="hero">
+  <h1>Painel de Divulgação</h1>
+  <p>Divulgue seu grupo do WhatsApp através da sua rede de divulgação autorizada.</p>
+  <div class="balance"><div><span>Saldo disponível</span><br><strong id="balance">R$ 0,00</strong></div><button class="add" onclick="openPix(30)">Adicionar saldo</button></div>
+ </div>
+
+ <section class="section">
+  <div class="title">Escolha seu pacote</div>
+  <div class="packages" id="packages">
+   <div class="package selected" data-price="30" data-qty="1"><b>1 divulgação</b><div class="qty">Pacote inicial</div><div class="price">R$ 30,00</div></div>
+   <div class="package" data-price="60" data-qty="2"><b>2 divulgações</b><div class="qty">Pacote duplo</div><div class="price">R$ 60,00</div></div>
+   <div class="package" data-price="100" data-qty="4"><b>4 divulgações</b><div class="qty">Pacote especial</div><div class="price">R$ 100,00</div></div>
+  </div>
+ </section>
+
+ <section class="section">
+  <div class="title">Divulgar link de grupo WhatsApp</div>
+  <div class="form">
+   <label>Link do grupo</label>
+   <input id="link" placeholder="https://chat.whatsapp.com/..." />
+   <button class="mainbtn" onclick="pay()">FAZER PAGAMENTO</button>
+   <div class="note">Use somente links de grupos em que você tenha autorização para divulgação.</div>
+  </div>
+ </section>
+
+ <section class="section">
+  <div class="title">Fila de links</div>
+  <div class="queue" id="queue"><div>Nenhum pedido na fila.</div></div>
+ </section>
+</div>
+
+<a class="support" href="javascript:alert('Entre em contato com o suporte do painel.')" title="Suporte">?</a>
+
+<div class="modal" id="modal">
+ <div class="box">
+  <h2>Pagamento Pix</h2>
+  <div id="amountText"></div>
+  <div id="qr"></div>
+  <div class="pix" id="pixcode"></div>
+  <button class="copy" onclick="copyPix()">COPIAR PIX COPIA E COLA</button>
+  <button class="close" onclick="closePix()">FECHAR</button>
+  <div class="note">A confirmação automática exige integração com um provedor Pix/backend. Este arquivo é a interface do painel.</div>
+ </div>
+</div>
+
+<script>
+const PIX_KEY="9529175b-9824-4f3d-b6ce-f0688749ec7c";
+let selected={price:30,qty:1};
+let orders=JSON.parse(localStorage.getItem("mk_video_orders")||"[]");
+
+document.querySelectorAll(".package").forEach(p=>p.onclick=()=>{
+ document.querySelectorAll(".package").forEach(x=>x.classList.remove("selected"));
+ p.classList.add("selected");
+ selected={price:Number(p.dataset.price),qty:Number(p.dataset.qty)};
+});
+
+function field(id,val){return id+String(val.length).padStart(2,"0")+val}
+function crc16(s){let c=65535;for(let i=0;i<s.length;i++){c^=s.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=(c&32768)?(c<<1)^4129:c<<1;c&=65535}return c.toString(16).toUpperCase().padStart(4,"0")}
+function pix(amount){
+ let merchant=field("59","MK PAINEL DIVULGACAO".slice(0,25)),city=field("60","ATALAIA");
+ let mai=field("26",field("00","br.gov.bcb.pix")+field("01",PIX_KEY));
+ let p="000201"+mai+"520400005303986"+field("54",Number(amount).toFixed(2))+field("58","BR")+merchant+city+field("62",field("05","MKDIV"));
+ return p+"6304"+crc16(p+"6304");
+}
+function openPix(amount){
+ let code=pix(amount);
+ document.getElementById("amountText").innerHTML="<p>Valor: <b>R$ "+amount.toFixed(2).replace(".",",")+"</b></p>";
+ document.getElementById("pixcode").textContent=code;
+ document.getElementById("qr").innerHTML="";
+ new QRCode(document.getElementById("qr"),{text:code,width:220,height:220});
+ document.getElementById("modal").classList.add("show");
+}
+function closePix(){document.getElementById("modal").classList.remove("show")}
+function copyPix(){navigator.clipboard.writeText(document.getElementById("pixcode").textContent).then(()=>alert("Código Pix copiado!"))}
+function pay(){
+ const link=document.getElementById("link").value.trim();
+ if(!link.startsWith("https://chat.whatsapp.com/")){alert("Informe um link de convite válido do WhatsApp.");return}
+ orders.unshift({link,qty:selected.qty,price:selected.price,status:"Aguardando pagamento",date:new Date().toLocaleString("pt-BR")});
+ localStorage.setItem("mk_video_orders",JSON.stringify(orders));
+ renderQueue(); openPix(selected.price);
+}
+function renderQueue(){
+ const q=document.getElementById("queue");
+ q.innerHTML=orders.length?orders.slice(0,8).map(o=>`<div>Pedido • ${o.qty} divulgação(ões) <span class="status">${o.status}</span><br><small style="color:#777">${o.date}</small></div>`).join(""):'<div>Nenhum pedido na fila.</div>';
+}
+renderQueue();
+</script>
+</body>
+</html>
