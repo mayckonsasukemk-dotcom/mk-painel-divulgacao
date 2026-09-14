@@ -311,6 +311,7 @@ app.post('/api/payments/pix', auth, async (req, res) => {
     email: `${req.user.phone}@mkpainel.com`
   }
 })
+      }
     );
 
     const data = await response.json();
