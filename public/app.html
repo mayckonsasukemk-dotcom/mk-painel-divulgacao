@@ -223,7 +223,15 @@ Carregando...
 
 
 <!-- ADMIN -->
-<section id="admin" class="box hidden">
+<section id="myOrders" class="box">
+  <h2>📦 MEUS PEDIDOS</h2>
+
+  <div id="myOrdersList">
+    <p class="muted">Carregando pedidos...</p>
+  </div>
+</section>
+  
+  <section id="admin" class="box hidden">
 
 <h2>⚙️ ADMINISTRAÇÃO</h2>
 
@@ -383,7 +391,7 @@ async function boot(){
 
 
     /* ADMIN */
-
+await loadMyOrders();
     if(user.role === "admin"){
 
   $("admin")
@@ -790,6 +798,96 @@ async function loadUsers(){
 
 }
 
+async function loadMyOrders(){
+
+  const container = $("myOrdersList");
+
+  if(!container){
+    return;
+  }
+
+  try{
+
+    const orders = await api("/api/my-orders");
+
+    if(!orders.length){
+
+      container.innerHTML =
+        '<p class="muted">Você ainda não fez nenhum pedido.</p>';
+
+      return;
+    }
+
+    container.innerHTML =
+      orders.map(item => {
+
+        let status = item.status;
+
+        if(status === "queued"){
+          status = "🟡 Pendente";
+        }
+
+        if(status === "processing"){
+          status = "🔵 Em andamento";
+        }
+
+        if(status === "completed"){
+          status = "🟢 Concluído";
+        }
+
+        if(status === "cancelled"){
+          status = "🔴 Cancelado";
+        }
+
+        return `
+          <div class="item">
+
+            <b>Pedido #${item.id}</b>
+
+            <br>
+
+            Pacote:
+            ${escapeHtml(item.package_name || "")}
+
+            <br>
+
+            Créditos:
+            ${Number(item.credits || 0)}
+
+            <br>
+
+            Status:
+            <span class="status">
+              ${escapeHtml(status)}
+            </span>
+
+            <br>
+
+            Link do grupo:
+            <br>
+
+            <a
+              href="${escapeHtml(item.group_link || "")}"
+              target="_blank"
+              rel="noopener"
+            >
+              ${escapeHtml(item.group_link || "")}
+            </a>
+
+          </div>
+        `;
+
+      }).join("");
+
+  }catch(error){
+
+    container.innerHTML =
+      `<p class="error">${escapeHtml(error.message)}</p>`;
+
+  }
+
+}
+  
 async function loadAdminOrders(){
 
   const container = $("adminOrders");
