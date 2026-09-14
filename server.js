@@ -303,14 +303,14 @@ app.post('/api/payments/pix', auth, async (req, res) => {
           'X-Idempotency-Key': crypto.randomUUID()
         },
         body: JSON.stringify({
-          transaction_amount: Number(amount),
-          description: 'Crédito MK Painel Divulgação',
-          payment_method_id: 'pix',
-          payer: {
-            email: `${req.user.phone}@mkpainel.com`
-          }
-        })
-      }
+  transaction_amount: Number(amount),
+  description: 'Crédito MK Painel Divulgação',
+  payment_method_id: 'pix',
+  external_reference: String(req.user.id),
+  payer: {
+    email: `${req.user.phone}@mkpainel.com`
+  }
+})
     );
 
     const data = await response.json();
