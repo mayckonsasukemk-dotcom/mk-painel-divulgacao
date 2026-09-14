@@ -744,6 +744,35 @@ app.get('/api/orders/:id', auth, async (req, res) => {
   }
 });
 
+app.get('/api/my-orders', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        o.id,
+        o.group_link,
+        o.credits,
+        o.status,
+        o.created_at,
+        p.name AS package_name,
+        p.price_cents
+      FROM orders o
+      JOIN packages p ON p.id = o.package_id
+      WHERE o.user_id = $1
+      ORDER BY o.id DESC
+      LIMIT 100
+    `, [req.user.id]);
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error('Erro ao carregar meus pedidos:', error);
+
+    res.status(500).json({
+      error: 'Erro ao carregar seus pedidos.'
+    });
+  }
+});
+
 app.get('/api/admin/users', auth, admin, async (req, res) => {
   try {
     const result = await pool.query(
