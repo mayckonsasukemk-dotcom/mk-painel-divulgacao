@@ -485,8 +485,8 @@ async function pix(){
         {
           method:"POST",
           body:{
-            amount_cents:
-              Number($("pkg").value),
+            amount:
+  Number($("pkg").value) / 100,
 
             email:
               $("email").value.trim(),
