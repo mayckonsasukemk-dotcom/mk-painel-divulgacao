@@ -905,13 +905,12 @@ async function updateOrderStatus(id, status){
 
     await loadAdminOrders();
 
-  }catch(error){
+}catch(error){
 
-    alert(error.message);
+  console.error("ERRO STATUS:", error);
+  alert("Erro: " + error.message);
 
   }
-
-}
   
 /* CRIAR USUÁRIO */
 
