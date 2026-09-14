@@ -394,12 +394,6 @@ async function start() {
     await initDb();
     await ensureAdmin();
 
-   async function start() {
-  try {
-    await pool.query('SELECT 1');
-    await initDb();
-    await ensureAdmin();
-
     app.listen(PORT, () => {
       console.log(`MK Painel rodando na porta ${PORT}`);
     });
