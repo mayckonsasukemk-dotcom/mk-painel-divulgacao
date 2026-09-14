@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MK Painel Divulgação</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:#050505;
+  color:#fff;
+  font-family:Arial,sans-serif;
+}
+main{
+  width:100%;
+  max-width:720px;
+  margin:auto;
+  padding:18px;
+}
+.box{
+  border:1px solid #f00;
+  box-shadow:0 0 18px #600;
+  padding:18px;
+  margin:12px 0;
+  border-radius:10px;
+  background:#090909;
+}
+h1{
+  color:#f22;
+  text-align:center;
+  text-shadow:0 0 12px #f00;
+}
+h2{
+  color:#f22;
+}
+input,select,button,textarea{
+  width:100%;
+  box-sizing:border-box;
+  padding:13px;
+  margin:7px 0;
+  background:#111;
+  color:#fff;
+  border:1px solid #900;
+  border-radius:7px;
+}
+button{
+  background:#d00000;
+  font-weight:700;
+  cursor:pointer;
+}
+button:hover{
+  background:#f00000;
+}
+.muted{
+  color:#aaa;
+}
+.hidden{
+  display:none!important;
+}
+.item{
+  border-top:1px solid #333;
+  padding:12px 0;
+}
+.qr{
+  max-width:260px;
+  background:#fff;
+  padding:8px;
+  display:block;
+  margin:10px auto;
+}
+.tabs{
+  display:flex;
+  gap:2%;
+}
+.tabs button{
+  width:49%;
+}
+.status{
+  padding:5px 8px;
+  border-radius:5px;
+  display:inline-block;
+  margin-top:5px;
+}
+.success{
+  color:#0f0;
+}
+.error{
+  color:#f33;
+}
+</style>
+</head>
+
+<body>
+
+<main>
+
+<h1>🔥 MK PAINEL DIVULGAÇÃO 🔥</h1>
+
+<!-- LOGIN -->
+<section id="login" class="box">
+
+<h2>Entrar</h2>
+
+<input
+  id="phone"
+  placeholder="Telefone"
+  autocomplete="tel"
+>
+
+<input
+  id="password"
+  type="password"
+  placeholder="Senha"
+  autocomplete="current-password"
+>
+
+<button onclick="login()">ENTRAR</button>
+
+<p id="msg" class="muted"></p>
+
+</section>
+
+
+<!-- PAINEL -->
+<section id="panel" class="hidden">
+
+<div class="box">
+
+<b>Logado como:</b>
+<span id="who"></span>
+
+<br><br>
+
+<b>Saldo:</b>
+R$ <span id="balance">0,00</span>
+
+<button onclick="logout()">SAIR</button>
+
+</div>
+
+
+<!-- ABAS -->
+<div class="tabs">
+
+<button onclick="show('pay')">
+💰 ADICIONAR SALDO
+</button>
+
+<button onclick="show('order')">
+📢 DIVULGAR GRUPO
+</button>
+
+</div>
+
+
+<!-- PAGAMENTO -->
+<section id="pay" class="box">
+
+<h2>💰 ADICIONAR SALDO</h2>
+
+<select id="pkg">
+<option>Carregando...</option>
+</select>
+
+<input
+  id="email"
+  type="email"
+  placeholder="E-mail do pagador"
+>
+
+<input
+  id="cpf"
+  placeholder="CPF do pagador"
+  inputmode="numeric"
+>
+
+<button onclick="pix()">
+GERAR PAGAMENTO PIX
+</button>
+
+<div id="pixout"></div>
+
+</section>
+
+
+<!-- PEDIDO -->
+<section id="order" class="box hidden">
+
+<h2>📢 DIVULGAR LINK DE GRUPO</h2>
+
+<p class="muted">
+Envie somente links de grupos/canais nos quais você tenha autorização para divulgar.
+</p>
+
+<input
+  id="link"
+  placeholder="https://chat.whatsapp.com/..."
+>
+
+<select id="opkg">
+<option>Carregando...</option>
+</select>
+
+<button onclick="order()">
+ENVIAR PEDIDO
+</button>
+
+</section>
+
+
+<!-- PEDIDOS -->
+<section class="box">
+
+<h2>📋 MEUS PEDIDOS</h2>
+
+<div id="orders">
+Carregando...
+</div>
+
+</section>
+
+
+<!-- ADMIN -->
+<section id="admin" class="box hidden">
+
+<h2>⚙️ ADMINISTRAÇÃO</h2>
+
+<input
+  id="newphone"
+  placeholder="Telefone do usuário"
+>
+
+<input
+  id="newpass"
+  type="password"
+  placeholder="Senha (8+ caracteres)"
+>
+
+<button onclick="createUser()">
+CRIAR USUÁRIO
+</button>
+
+<div id="users"></div>
+
+</section>
+
+</section>
+
+</main>
+
+
+<script>
+
+let token = localStorage.getItem("token") || null;
+
+const $ = id => document.getElementById(id);
+
+
+/* API */
+
+async function api(url,opt={}){
+
+  opt.headers = {
+    ...(opt.headers || {}),
+    ...(token ? {
+      Authorization:"Bearer " + token
+    } : {})
+  };
+
+  if(
+    opt.body &&
+    typeof opt.body !== "string"
+  ){
+
+    opt.headers["Content-Type"] =
+      "application/json";
+
+    opt.body =
+      JSON.stringify(opt.body);
+
+  }
+
+  const response =
+    await fetch(url,opt);
+
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
+
+  if(!response.ok){
+
+    throw new Error(
+      data.error || "Erro na solicitação"
+    );
+
+  }
+
+  return data;
+
+}
+
+
+/* LOGIN */
+
+async function login(){
+
+  const msg = $("msg");
+
+  msg.textContent = "Entrando...";
+
+  try{
+
+    const data =
+      await api(
+        "/api/auth/login",
+        {
+          method:"POST",
+          body:{
+            phone:$("phone").value.trim(),
+            password:$("password").value
+          }
+        }
+      );
+
+    token = data.token;
+
+    localStorage.setItem(
+      "token",
+      token
+    );
+
+    msg.textContent = "";
+
+    await boot();
+
+  }catch(error){
+
+    msg.textContent =
+      error.message;
+
+  }
+
+}
+
+
+/* INICIALIZAÇÃO */
+
+async function boot(){
+
+  try{
+
+    const user =
+      await api("/api/me");
+
+    $("login")
+      .classList
+      .add("hidden");
+
+    $("panel")
+      .classList
+      .remove("hidden");
+
+    $("who").textContent =
+      user.phone || "";
+
+    $("balance").textContent =
+      (
+        Number(user.balance_cents || 0) / 100
+      )
+      .toFixed(2)
+      .replace(".",",");
+
+
+    /* ADMIN */
+
+    if(user.role === "admin"){
+
+      $("admin")
+        .classList
+        .remove("hidden");
+
+      await loadUsers();
+
+    }
+
+
+    /* PACOTES */
+
+    const packages =
+      await api("/api/packages");
+
+
+    $("pkg").innerHTML =
+      packages.map(packageItem => {
+
+        return `
+          <option value="${packageItem.price_cents}">
+            ${escapeHtml(packageItem.name)}
+            — R$ ${(packageItem.price_cents / 100)
+              .toFixed(2)
+              .replace(".",",")}
+          </option>
+        `;
+
+      }).join("");
+
+
+    $("opkg").innerHTML =
+      packages.map(packageItem => {
+
+        return `
+          <option value="${packageItem.id}">
+            ${escapeHtml(packageItem.name)}
+          </option>
+        `;
+
+      }).join("");
+
+
+    await loadOrders();
+
+  }catch(error){
+
+    console.error(error);
+
+    logout();
+
+  }
+
+}
+
+
+/* TROCAR ABA */
+
+function show(section){
+
+  $("pay")
+    .classList
+    .toggle(
+      "hidden",
+      section !== "pay"
+    );
+
+  $("order")
+    .classList
+    .toggle(
+      "hidden",
+      section !== "order"
+    );
+
+}
+
+
+/* LOGOUT */
+
+function logout(){
+
+  localStorage.removeItem("token");
+
+  token = null;
+
+  location.reload();
+
+}
+
+
+/* PIX */
+
+async function pix(){
+
+  const output =
+    $("pixout");
+
+  output.innerHTML =
+    "<p>Gerando pagamento PIX...</p>";
+
+  try{
+
+    const data =
+      await api(
+        "/api/payments/pix",
+        {
+          method:"POST",
+          body:{
+            amount_cents:
+              Number($("pkg").value),
+
+            email:
+              $("email").value.trim(),
+
+            cpf:
+              $("cpf").value.trim()
+          }
+        }
+      );
+
+
+    let html = `
+      <div class="box">
+        <p>
+          <b>Status:</b>
+          ${escapeHtml(data.status || "pending")}
+        </p>
+    `;
+
+
+    if(data.qr_code_base64){
+
+      html += `
+        <img
+          class="qr"
+          src="data:image/png;base64,${data.qr_code_base64}"
+          alt="QR Code PIX"
+        >
+      `;
+
+    }
+
+
+    if(data.qr_code){
+
+      html += `
+        <p>
+          <b>Código PIX:</b>
+        </p>
+
+        <textarea
+          readonly
+          style="height:100px"
+        >${escapeHtml(data.qr_code)}</textarea>
+
+        <button
+          onclick="copyPix()"
+        >
+          COPIAR CÓDIGO PIX
+        </button>
+      `;
+
+    }
+
+
+    html += `
+        <p class="muted">
+          Após a confirmação do pagamento,
+          o saldo será atualizado automaticamente.
+        </p>
+      </div>
+    `;
+
+    output.innerHTML = html;
+
+
+    window.currentPix =
+      data.qr_code || "";
+
+  }catch(error){
+
+    output.innerHTML =
+      `<p class="error">${escapeHtml(error.message)}</p>`;
+
+  }
+
+}
+
+
+/* COPIAR PIX */
+
+async function copyPix(){
+
+  if(!window.currentPix){
+
+    return;
+
+  }
+
+  try{
+
+    await navigator.clipboard.writeText(
+      window.currentPix
+    );
+
+    alert("Código PIX copiado!");
+
+  }catch{
+
+    alert(
+      "Não foi possível copiar automaticamente."
+    );
+
+  }
+
+}
+
+
+/* CRIAR PEDIDO */
+
+async function order(){
+
+  const link =
+    $("link").value.trim();
+
+  if(!link){
+
+    alert("Digite o link do grupo.");
+
+    return;
+
+  }
+
+  if(
+    !link.startsWith(
+      "https://chat.whatsapp.com/"
+    )
+  ){
+
+    alert(
+      "Digite um link válido de grupo do WhatsApp."
+    );
+
+    return;
+
+  }
+
+
+  try{
+
+    await api(
+      "/api/orders",
+      {
+        method:"POST",
+        body:{
+          package_id:
+            Number($("opkg").value),
+
+          group_link:
+            link
+        }
+      }
+    );
+
+
+    $("link").value = "";
+
+    alert(
+      "Pedido enviado para a fila!"
+    );
+
+    await loadOrders();
+
+    await boot();
+
+  }catch(error){
+
+    alert(error.message);
+
+  }
+
+}
+
+
+/* PEDIDOS */
+
+async function loadOrders(){
+
+  const container =
+    $("orders");
+
+  try{
+
+    const orders =
+      await api("/api/orders");
+
+
+    if(!orders.length){
+
+      container.innerHTML =
+        '<p class="muted">Nenhum pedido.</p>';
+
+      return;
+
+    }
+
+
+    container.innerHTML =
+      orders.map(item => {
+
+        return `
+          <div class="item">
+
+            <b>
+              Pedido #${item.id}
+            </b>
+
+            <br>
+
+            Pacote:
+            ${escapeHtml(item.package_name || "")}
+
+            <br>
+
+            Status:
+            <span class="status">
+              ${escapeHtml(item.status || "")}
+            </span>
+
+            <br>
+
+            <span class="muted">
+              ${escapeHtml(item.group_link || "")}
+            </span>
+
+          </div>
+        `;
+
+      }).join("");
+
+  }catch(error){
+
+    container.innerHTML =
+      `<p class="error">${escapeHtml(error.message)}</p>`;
+
+  }
+
+}
+
+
+/* USUÁRIOS ADMIN */
+
+async function loadUsers(){
+
+  try{
+
+    const users =
+      await api(
+        "/api/admin/users"
+      );
+
+
+    $("users").innerHTML =
+      users.map(user => {
+
+        return `
+          <div class="item">
+
+            <b>
+              #${user.id}
+            </b>
+
+            ${escapeHtml(user.phone)}
+
+            <br>
+
+            Saldo:
+            R$
+            ${(
+              Number(user.balance_cents || 0) / 100
+            )
+            .toFixed(2)
+            .replace(".",",")}
+
+            <button
+              onclick="addBal(${user.id})"
+            >
+              ADICIONAR SALDO
+            </button>
+
+          </div>
+        `;
+
+      }).join("");
+
+  }catch(error){
+
+    $("users").innerHTML =
+      `<p class="error">${escapeHtml(error.message)}</p>`;
+
+  }
+
+}
+
+
+/* CRIAR USUÁRIO */
+
+async function createUser(){
+
+  const phone =
+    $("newphone").value.trim();
+
+  const password =
+    $("newpass").value;
+
+
+  if(!phone || !password){
+
+    alert(
+      "Preencha telefone e senha."
+    );
+
+    return;
+
+  }
+
+
+  try{
+
+    await api(
+      "/api/admin/users",
+      {
+        method:"POST",
+        body:{
+          phone,
+          password
+        }
+      }
+    );
+
+
+    $("newphone").value = "";
+
+    $("newpass").value = "";
+
+    alert(
+      "Usuário criado com sucesso!"
+    );
+
+    await loadUsers();
+
+  }catch(error){
+
+    alert(error.message);
+
+  }
+
+}
+
+
+/* ADICIONAR SALDO ADMIN */
+
+async function addBal(id){
+
+  const value =
+    prompt(
+      "Valor em reais. Use negativo para descontar:",
+      "30"
+    );
+
+
+  if(value === null){
+
+    return;
+
+  }
+
+
+  const cents =
+    Math.round(
+      Number(value) * 100
+    );
+
+
+  if(!Number.isFinite(cents)){
+
+    alert("Valor inválido.");
+
+    return;
+
+  }
+
+
+  try{
+
+    await api(
+      "/api/admin/users/" + id + "/balance",
+      {
+        method:"POST",
+        body:{
+          cents
+        }
+      }
+    );
+
+
+    await loadUsers();
+
+    alert(
+      "Saldo atualizado!"
+    );
+
+  }catch(error){
+
+    alert(error.message);
+
+  }
+
+}
+
+
+/* SEGURANÇA PARA TEXTO HTML */
+
+function escapeHtml(value){
+
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+
+}
+
+
+/* INICIAR */
+
+if(token){
+
+  boot();
+
+}
+
+</script>
+
+</body>
+  </html>
