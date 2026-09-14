@@ -244,6 +244,14 @@ CRIAR USUÁRIO
 
 <div id="users"></div>
 
+<hr>
+
+<h3>📦 PEDIDOS DOS CLIENTES</h3>
+
+<div id="adminOrders">
+  <p class="muted">Carregando pedidos...</p>
+</div>
+  
 </section>
 
 </section>
@@ -378,11 +386,12 @@ async function boot(){
 
     if(user.role === "admin"){
 
-      $("admin")
-        .classList
-        .remove("hidden");
+  $("admin")
+    .classList
+    .remove("hidden");
 
-      await loadUsers();
+  await loadUsers();
+  await loadAdminOrders();
 
     }
 
@@ -781,7 +790,129 @@ async function loadUsers(){
 
 }
 
+async function loadAdminOrders(){
 
+  const container = $("adminOrders");
+
+  if(!container){
+    return;
+  }
+
+  try{
+
+    const orders =
+      await api("/api/admin/orders");
+
+    if(!orders.length){
+
+      container.innerHTML =
+        '<p class="muted">Nenhum pedido recebido.</p>';
+
+      return;
+    }
+
+    container.innerHTML =
+      orders.map(item => {
+
+        return `
+          <div class="item">
+
+            <b>
+              Pedido #${item.id}
+            </b>
+
+            <br>
+
+            Cliente:
+            ${escapeHtml(item.phone || "")}
+
+            <br>
+
+            Pacote:
+            ${escapeHtml(item.package_name || "")}
+
+            <br>
+
+            Créditos:
+            ${Number(item.credits || 0)}
+
+            <br>
+
+            Link do grupo:
+            <br>
+
+            <a
+              href="${escapeHtml(item.group_link || "")}"
+              target="_blank"
+              rel="noopener"
+            >
+              ${escapeHtml(item.group_link || "")}
+            </a>
+
+            <br>
+
+            Status:
+            <span class="status">
+              ${escapeHtml(item.status || "")}
+            </span>
+
+            <br><br>
+
+            <button
+              onclick="updateOrderStatus(${item.id}, 'processing')"
+            >
+              INICIAR
+            </button>
+
+            <button
+              onclick="updateOrderStatus(${item.id}, 'completed')"
+            >
+              CONCLUÍDO
+            </button>
+
+            <button
+              onclick="updateOrderStatus(${item.id}, 'cancelled')"
+            >
+              CANCELAR
+            </button>
+
+          </div>
+        `;
+
+      }).join("");
+
+  }catch(error){
+
+    container.innerHTML =
+      `<p class="error">${escapeHtml(error.message)}</p>`;
+
+  }
+
+}
+
+
+async function updateOrderStatus(id, status){
+
+  try{
+
+    await api(
+      "/api/admin/orders/" + id + "/status",
+      {
+        method:"PATCH",
+        body:{ status }
+      }
+    );
+
+    await loadAdminOrders();
+
+  }catch(error){
+
+    alert(error.message);
+
+  }
+
+}
+  
 /* CRIAR USUÁRIO */
 
 async function createUser(){
