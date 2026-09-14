@@ -801,10 +801,13 @@ async function loadAdminOrders(){
   try{
 
     const orders =
-      await api("/api/admin/orders");
+  await api("/api/admin/orders");
 
-    if(!orders.length){
+const activeOrders = orders.filter(item =>
+  item.status === "queued" || item.status === "processing"
+);
 
+if(!activeOrders.length){
       container.innerHTML =
         '<p class="muted">Nenhum pedido recebido.</p>';
 
@@ -812,7 +815,7 @@ async function loadAdminOrders(){
     }
 
     container.innerHTML =
-      orders.map(item => {
+      activeOrders.map(item => {
 
         return `
           <div class="item">
