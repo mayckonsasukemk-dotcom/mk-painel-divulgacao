@@ -282,6 +282,57 @@ app.get('/api/me', auth, async (req, res) => {
   }
 });
 
+app.post('/api/payments/pix', auth, async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (!amount || Number(amount) < 30) {
+      return res.status(400).json({
+        error: 'O valor mínimo é R$ 30,00'
+      });
+    }
+
+    const response = await fetch(
+      'https://api.mercadopago.com/v1/payments',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+          'X-Idempotency-Key': crypto.randomUUID()
+        },
+        body: JSON.stringify({
+          transaction_amount: Number(amount),
+          description: 'Crédito MK Painel Divulgação',
+          payment_method_id: 'pix',
+          payer: {
+            email: `${req.user.phone}@mkpainel.com`
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Mercado Pago:', data);
+      return res.status(400).json({
+        error: 'Não foi possível criar o Pix'
+      });
+    }
+
+    res.json({
+      id: data.id,
+      status: data.status,
+      qr_code: data.point_of_interaction?.transaction_data?.qr_code,
+      qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64
+    });
+  } catch (error) {
+    console.error('Erro Pix:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar Pix' });
+  }
+});
+
 app.get('/api/packages', auth, async (req, res) => {
   try {
     const result = await pool.query(
